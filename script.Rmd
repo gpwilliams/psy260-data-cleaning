@@ -1,0 +1,123 @@
+---
+title: "Data Cleaning for PSY260"
+output: html_notebook
+---
+
+First, we will need to install and/or load the packages used for working with data and reading/writing files.
+
+```{r, message = FALSE}
+# if packages aren't installed, install them
+if(!require("tidyverse")) {install.packages("tidyverse")}
+if(!require("here")) {install.packages("here")}
+
+# load required packages
+library(tidyverse)
+library(here)
+```
+
+We will then get all of our Pavlovia files. You must ensure that you've uploaded them to the **01_pavlovia_data** folder in RStudio Cloud before this code can run.
+
+```{r, message=FALSE, warning=FALSE}
+# get the pavlovia data files and merge together
+my_files <- list.files(
+  "01_pavlovia_data", 
+  pattern = "*.csv", 
+  full.names = TRUE
+)
+
+# read all files in and combine into one table
+pavlovia_data <- my_files %>% 
+  map(read_csv) %>% 
+  reduce(rbind)
+```
+
+We will then process the pavlovia data. We will filter only to sensible trials from the experimental phase and with towards/away directions implied in the sentence. We will then create a variable called response_direction which takes your two correct keys.
+
+**IMPORTANT:** If you have remapped your keys from w/s to some other keys, you msut replace this in the code on lines 47 and 48 below. For example, you will have to change correct_response == "w" to whatever key you replaced w with. Note that this is case-sensitive.
+
+We then rename our variables to make them more informative, change the reaction time from seconds to milliseconds, and then group the data by each participant and each variable before creating mean reaction tiems and counting the total number of trials and correct trials the participants had.
+
+```{r}
+cleaned_data_long <- pavlovia_data %>% 
+  filter(
+    sensibility == "sensible" &
+      phase != "prac" &
+      direction %in% c("away", "towards")
+  ) %>% 
+  mutate(
+    response_direction = case_when(
+      correct_response == "w" ~ "far",
+      correct_response == "s" ~ "near"
+  )) %>% 
+  rename(sentence_direction = direction) %>% 
+  mutate(key_sentence.rt = key_sentence.rt * 1000) %>% 
+  group_by(participant, sentence_direction, response_direction) %>% 
+  summarise(
+    reaction_time = mean(key_sentence.rt),
+    n_correct = sum(key_sentence.corr),
+    n_trials = n()
+  ) 
+```
+
+Next, we will take our data from a long format and make it to a wide format. This is useful if you want to analyse it in SPSS, JASP, or Jamovi. The long data format is more useful if you intend to analyse it in R.
+
+```{r}
+cleaned_data_wide <- cleaned_data_long %>% 
+  pivot_wider(
+    id_cols = participant,
+    names_from = c(sentence_direction, response_direction),
+    values_from = c(reaction_time, n_correct, n_trials)
+  )
+```
+
+We will next read in our Qualtrics data. This will only work if you've saved the data under the name "exp_start.csv" and uploaded this to the 02_qualtrics_data folder on RStudio Cloud. 
+
+Here, we will simply remove a lot of the useless columns from the data we acquired on Qualtrics. Note that anything not listed here will be included in your data. Hopefully you saved some age and gender information along with consent questions that will be included in your data.
+
+```{r}
+demographics <- read_csv(here("02_qualtrics_data", "exp_start.csv")) %>% 
+  slice(3:nrow(.)) %>% 
+  select(-c(
+    StartDate, 
+    EndDate, 
+    Status, 
+    IPAddress,
+    `Duration (in seconds)`,
+    RecordedDate,
+    ResponseId, 
+    RecipientLastName,
+    RecipientFirstName,
+    RecipientEmail,
+    ExternalReference,
+    LocationLatitude,
+    LocationLongitude,
+    DistributionChannel,
+    UserLanguage,
+    url_redirect,
+    list_select
+  ))
+```
+
+Next, we will join our wide and long format data together with the demographics data so it's all in one table.
+
+```{r}
+cleaned_data_long <- left_join(
+  cleaned_data_long, 
+  demographics, 
+  by = "participant"
+)
+cleaned_data_wide <- left_join(
+  cleaned_data_wide, 
+  demographics, 
+  by = "participant"
+)
+```
+
+Finally, we will save both our wide and long format data to the folder labelled "03_final_data". You can download these data files from RStudio Cloud for your analyses.
+
+Note that you will only need the WIDE FORMAT DATA for SPSS, JASP, and Jamovi. The LONG FORMAT DATA is needed for R analyes only.
+
+```{r}
+write_csv(cleaned_data_long, here("03_final_data", "cleaned_data_long.csv"))
+write_csv(cleaned_data_wide, here("03_final_data", "cleaned_data_wide.csv"))
+```
