@@ -27,8 +27,8 @@ my_files <- list.files(
 
 # read all files in and combine into one table
 pavlovia_data <- my_files %>% 
-  map(read_csv) %>% 
-  reduce(rbind)
+  map_df(~read_csv(.x, col_types = cols(.default = "c"))) %>% 
+  type_convert()
 ```
 
 We will then process the pavlovia data. We will filter only to sensible trials from the experimental phase and with towards/away directions implied in the sentence. We will then create a variable called response_direction which takes your two correct keys.
@@ -56,7 +56,8 @@ cleaned_data_long <- pavlovia_data %>%
     reaction_time = mean(key_sentence.rt),
     n_correct = sum(key_sentence.corr),
     n_trials = n()
-  ) 
+  ) %>% 
+  filter(!is.na(participant))
 ```
 
 Next, we will take our data from a long format and make it to a wide format. This is useful if you want to analyse it in SPSS, JASP, or Jamovi. The long data format is more useful if you intend to analyse it in R.
@@ -93,9 +94,9 @@ demographics <- read_csv(here("02_qualtrics_data", "exp_start.csv")) %>%
     LocationLongitude,
     DistributionChannel,
     UserLanguage,
-    url_redirect,
     list_select
-  ))
+  )) %>% 
+  dplyr::rename_all(stringr::str_to_lower)
 ```
 
 Next, we will join our wide and long format data together with the demographics data so it's all in one table.
